@@ -8,7 +8,6 @@ services:
       MYSQL_DATABASE: fiap_hackathon
       MYSQL_USER: hackathon
       MYSQL_PASSWORD: hackathonpass
-    ports: ["3306:3306"]
     volumes:
       - ../docker/mysql-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
@@ -23,7 +22,6 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: rootpass
-    ports: ["27017:27017"]
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
       interval: 5s
