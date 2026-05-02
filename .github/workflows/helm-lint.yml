@@ -1,0 +1,46 @@
+name: helm-lint
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'helm/**'
+      - '.github/workflows/helm-lint.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'helm/**'
+
+jobs:
+  lint:
+    name: helm lint + template
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.14.0
+
+      - name: helm lint
+        working-directory: helm
+        run: helm lint ./fiap-hackathon-service
+
+      - name: helm template (smoke render — todos os values)
+        working-directory: helm
+        env:
+          ECR_REGISTRY: 123456789012.dkr.ecr.us-east-1.amazonaws.com
+          IMAGE_TAG: ci-test
+          S3_BUCKET_RAW: ci-test-bucket
+          SQS_ANALYSIS_REQUESTED_URL: https://sqs.us-east-1.amazonaws.com/123/ci-requested
+          SQS_ANALYSIS_COMPLETED_URL: https://sqs.us-east-1.amazonaws.com/123/ci-completed
+          SQS_ANALYSIS_FAILED_URL: https://sqs.us-east-1.amazonaws.com/123/ci-failed
+          IRSA_UPLOAD_ROLE_ARN: arn:aws:iam::123456789012:role/ci-upload
+          IRSA_PROCESSING_ROLE_ARN: arn:aws:iam::123456789012:role/ci-processing
+          IRSA_REPORT_ROLE_ARN: arn:aws:iam::123456789012:role/ci-report
+        run: |
+          for svc in bff upload-orchestration processing report; do
+            envsubst < values-${svc}.yaml > /tmp/values-${svc}.yaml
+            helm template ci-${svc} ./fiap-hackathon-service -f /tmp/values-${svc}.yaml > /dev/null
+            echo "✓ values-${svc}.yaml renders OK"
+          done

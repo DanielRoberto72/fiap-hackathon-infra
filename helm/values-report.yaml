@@ -1,0 +1,26 @@
+## Override para o microsserviço report.
+serviceName: fiap-hackathon-report
+containerPort: 3003
+
+image:
+  repository: ${ECR_REGISTRY}/fiap-hackathon-dev-report
+  tag: ${IMAGE_TAG}
+
+service:
+  type: ClusterIP
+  port: 80
+
+irsaRoleArn: ${IRSA_REPORT_ROLE_ARN}
+
+env:
+  NODE_ENV: production
+  LOG_LEVEL: info
+  AWS_REGION: us-east-1
+  SQS_ANALYSIS_COMPLETED_URL: ${SQS_ANALYSIS_COMPLETED_URL}
+  SQS_ANALYSIS_FAILED_URL: ${SQS_ANALYSIS_FAILED_URL}
+
+envFromSecrets:
+  - name: report-db-credentials
+
+datadog:
+  service: fiap-hackathon-report

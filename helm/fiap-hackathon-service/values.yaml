@@ -1,0 +1,68 @@
+## Defaults para todos os microsserviços. Cada serviço sobrescreve via -f values-<servico>.yaml
+
+# Nome do serviço (usado em metadata.name e labels). Deve ser sobrescrito.
+serviceName: fiap-hackathon-service
+
+# Imagem Docker no ECR. Sobrescrever por serviço.
+image:
+  repository: ""
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Porta exposta pelo container.
+containerPort: 3000
+
+# Replicas e HPA.
+replicaCount: 2
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+
+# Resources solicitados/limit. Default conservador para t3.small.
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Tipo do Service. Para o BFF é LoadBalancer (NLB interno);
+# os outros são ClusterIP.
+service:
+  type: ClusterIP
+  port: 80
+
+# Probes (defaults razoáveis para NestJS).
+probes:
+  enabled: true
+  livenessPath: /api/health/live
+  readinessPath: /api/health/ready
+  initialDelaySeconds: 15
+  periodSeconds: 10
+  timeoutSeconds: 3
+
+# IRSA: se setado, o ServiceAccount recebe annotation
+# eks.amazonaws.com/role-arn=<irsaRoleArn>.
+irsaRoleArn: ""
+
+# Variáveis de ambiente comuns. Cada serviço sobrescreve.
+env: {}
+# env:
+#   AWS_REGION: us-east-1
+#   LOG_LEVEL: info
+
+# Variáveis vindas de Secrets do K8s (que os values-*.yaml configuram externamente).
+envFromSecrets: []
+# envFromSecrets:
+#   - name: rds-credentials
+#   - name: jwt-secret
+
+# Datadog APM annotations (admission controller faz inject quando habilitado).
+datadog:
+  enabled: true
+  service: ""    # default = serviceName
+  env: dev
+  version: "0.1.0"

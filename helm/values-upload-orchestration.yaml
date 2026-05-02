@@ -1,0 +1,42 @@
+## Override para o microsserviço upload-orchestration.
+serviceName: fiap-hackathon-upload-orchestration
+containerPort: 3001
+
+image:
+  repository: ${ECR_REGISTRY}/fiap-hackathon-dev-upload-orchestration
+  tag: ${IMAGE_TAG}
+
+service:
+  type: ClusterIP
+  port: 80
+
+# IRSA: pod assume role com permissão S3 PutObject + SQS SendMessage + Secrets Manager.
+irsaRoleArn: ${IRSA_UPLOAD_ROLE_ARN}
+
+env:
+  NODE_ENV: production
+  LOG_LEVEL: info
+  AWS_REGION: us-east-1
+  S3_BUCKET_RAW: ${S3_BUCKET_RAW}
+  SQS_ANALYSIS_REQUESTED_URL: ${SQS_ANALYSIS_REQUESTED_URL}
+  CLAMAV_HOST: clamav.default.svc.cluster.local
+  CLAMAV_PORT: "3310"
+  CLAMAV_ENABLED: "true"
+
+envFromSecrets:
+  - name: upload-db-credentials
+
+probes:
+  livenessPath: /api/health/live
+  readinessPath: /api/health/ready
+
+datadog:
+  service: fiap-hackathon-upload-orchestration
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 384Mi
+  limits:
+    cpu: 800m
+    memory: 768Mi

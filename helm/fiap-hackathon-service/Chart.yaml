@@ -1,0 +1,9 @@
+apiVersion: v2
+name: fiap-hackathon-service
+description: Helm chart unificado para os microsserviços NestJS do Hackathon FIAP.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+maintainers:
+  - name: Daniel Roberto
+    url: https://github.com/DanielRoberto72

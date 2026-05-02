@@ -1,0 +1,47 @@
+## Override para o microsserviço processing.
+serviceName: fiap-hackathon-processing
+containerPort: 3002
+
+image:
+  repository: ${ECR_REGISTRY}/fiap-hackathon-dev-processing
+  tag: ${IMAGE_TAG}
+
+service:
+  type: ClusterIP
+  port: 80
+
+irsaRoleArn: ${IRSA_PROCESSING_ROLE_ARN}
+
+# Processing pode ficar com 1 replica em dev (worker SQS aguenta).
+replicaCount: 1
+hpa:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 75
+
+env:
+  NODE_ENV: production
+  LOG_LEVEL: info
+  AWS_REGION: us-east-1
+  SQS_ANALYSIS_REQUESTED_URL: ${SQS_ANALYSIS_REQUESTED_URL}
+  SQS_ANALYSIS_COMPLETED_URL: ${SQS_ANALYSIS_COMPLETED_URL}
+  SQS_ANALYSIS_FAILED_URL: ${SQS_ANALYSIS_FAILED_URL}
+  LLM_VISION_PROVIDER: gemini
+  LLM_TEXT_PROVIDER: groq
+  LLM_TEMPERATURE: "0.2"
+
+envFromSecrets:
+  - name: processing-secrets
+
+datadog:
+  service: fiap-hackathon-processing
+
+# pdf2pic + GraphicsMagick + Ghostscript têm pegada maior de memória.
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi

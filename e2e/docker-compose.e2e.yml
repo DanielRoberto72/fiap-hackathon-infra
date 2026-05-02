@@ -1,0 +1,125 @@
+name: fiap-hackathon-e2e
+
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: fiap_hackathon
+      MYSQL_USER: hackathon
+      MYSQL_PASSWORD: hackathonpass
+    ports: ["3306:3306"]
+    volumes:
+      - ../docker/mysql-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-prootpass"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [e2e]
+
+  mongo:
+    image: mongo:7
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: rootpass
+    ports: ["27017:27017"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [e2e]
+
+  localstack:
+    image: localstack/localstack:3.7
+    environment:
+      SERVICES: s3,sqs,sns,secretsmanager
+      DEFAULT_REGION: us-east-1
+      AWS_DEFAULT_REGION: us-east-1
+      DEBUG: "0"
+    ports: ["4566:4566"]
+    volumes:
+      - ../localstack-init:/etc/localstack/init/ready.d:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [e2e]
+
+  upload-orchestration:
+    build: ../../fiap-hackathon-upload-orchestration
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      DATABASE_URL: mysql://hackathon:hackathonpass@mysql:3306/fiap_hackathon_upload
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_ENDPOINT_URL: http://localstack:4566
+      S3_BUCKET_RAW: fiap-hackathon-dev-uploads
+      SQS_ANALYSIS_REQUESTED_URL: http://localstack:4566/000000000000/analysis-requested
+      CLAMAV_ENABLED: "false"
+    depends_on:
+      mysql: { condition: service_healthy }
+      localstack: { condition: service_healthy }
+    ports: ["3001:3001"]
+    networks: [e2e]
+
+  processing:
+    build: ../../fiap-hackathon-processing
+    environment:
+      NODE_ENV: production
+      PORT: "3002"
+      MONGO_URI: mongodb://root:rootpass@mongo:27017/fiap_hackathon_processing?authSource=admin
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_ENDPOINT_URL: http://localstack:4566
+      SQS_ANALYSIS_REQUESTED_URL: http://localstack:4566/000000000000/analysis-requested
+      SQS_ANALYSIS_COMPLETED_URL: http://localstack:4566/000000000000/analysis-completed
+      SQS_ANALYSIS_FAILED_URL: http://localstack:4566/000000000000/analysis-failed
+      LLM_VISION_PROVIDER: mock
+      LLM_TEXT_PROVIDER: mock
+    depends_on:
+      mongo: { condition: service_healthy }
+      localstack: { condition: service_healthy }
+    ports: ["3002:3002"]
+    networks: [e2e]
+
+  report:
+    build: ../../fiap-hackathon-report
+    environment:
+      NODE_ENV: production
+      PORT: "3003"
+      DATABASE_URL: mysql://hackathon:hackathonpass@mysql:3306/fiap_hackathon_report
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_ENDPOINT_URL: http://localstack:4566
+      SQS_ANALYSIS_COMPLETED_URL: http://localstack:4566/000000000000/analysis-completed
+      SQS_ANALYSIS_FAILED_URL: http://localstack:4566/000000000000/analysis-failed
+    depends_on:
+      mysql: { condition: service_healthy }
+      localstack: { condition: service_healthy }
+    ports: ["3003:3003"]
+    networks: [e2e]
+
+  bff:
+    build: ../../fiap-hackathon-bff
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      UPLOAD_ORCHESTRATION_BASE_URL: http://upload-orchestration:3001
+      REPORT_BASE_URL: http://report:3003
+      AUTH_BASE_URL: http://localhost:3004
+    depends_on:
+      - upload-orchestration
+      - report
+    ports: ["3000:3000"]
+    networks: [e2e]
+
+networks:
+  e2e:
+    driver: bridge

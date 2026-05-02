@@ -1,0 +1,22 @@
+## Override do chart fiap-hackathon-service para o microsserviço bff.
+serviceName: fiap-hackathon-bff
+containerPort: 3000
+
+image:
+  repository: ${ECR_REGISTRY}/fiap-hackathon-dev-bff
+  tag: ${IMAGE_TAG}
+
+service:
+  type: LoadBalancer
+  port: 80
+
+env:
+  NODE_ENV: production
+  LOG_LEVEL: info
+  UPLOAD_ORCHESTRATION_BASE_URL: http://fiap-hackathon-upload-orchestration.default.svc.cluster.local
+  REPORT_BASE_URL: http://fiap-hackathon-report.default.svc.cluster.local
+  AUTH_BASE_URL: http://fiap-hackathon-bff.default.svc.cluster.local
+  INTERNAL_TIMEOUT_MS: "15000"
+
+datadog:
+  service: fiap-hackathon-bff
