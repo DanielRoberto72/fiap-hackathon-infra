@@ -1,0 +1,122 @@
+name: fiap-hackathon
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: fiap-hackathon-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpass}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-fiap_hackathon}
+      MYSQL_USER: ${MYSQL_USER:-hackathon}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-hackathonpass}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./docker/mysql-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-rootpass}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - fiap-net
+
+  mongo:
+    image: mongo:7
+    container_name: fiap-hackathon-mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-root}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-rootpass}
+      MONGO_INITDB_DATABASE: ${MONGO_DATABASE:-fiap_hackathon_processing}
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - fiap-net
+
+  localstack:
+    image: localstack/localstack:3.7
+    container_name: fiap-hackathon-localstack
+    restart: unless-stopped
+    environment:
+      SERVICES: s3,sqs,sns,secretsmanager
+      DEFAULT_REGION: us-east-1
+      AWS_DEFAULT_REGION: us-east-1
+      DEBUG: "0"
+      PERSISTENCE: "1"
+      LS_LOG: warn
+    ports:
+      - "4566:4566"
+    volumes:
+      - localstack-data:/var/lib/localstack
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - ./localstack-init:/etc/localstack/init/ready.d:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - fiap-net
+
+  clamav:
+    image: clamav/clamav:1.4
+    container_name: fiap-hackathon-clamav
+    restart: unless-stopped
+    ports:
+      - "3310:3310"
+    volumes:
+      - clamav-data:/var/lib/clamav
+    healthcheck:
+      test: ["CMD-SHELL", "echo PING | nc -q 1 127.0.0.1 3310 | grep -q PONG"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    networks:
+      - fiap-net
+
+  datadog:
+    image: gcr.io/datadoghq/agent:7
+    container_name: fiap-hackathon-datadog
+    restart: unless-stopped
+    environment:
+      DD_API_KEY: ${DD_API_KEY:-disabled-locally}
+      DD_SITE: ${DD_SITE:-datadoghq.com}
+      DD_APM_ENABLED: "true"
+      DD_APM_NON_LOCAL_TRAFFIC: "true"
+      DD_LOGS_ENABLED: "true"
+      DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL: "true"
+      DD_DOGSTATSD_NON_LOCAL_TRAFFIC: "true"
+      DD_HOSTNAME: fiap-hackathon-local
+      DD_TAGS: "env:dev project:fiap-hackathon"
+    ports:
+      - "8125:8125/udp"
+      - "8126:8126"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "/proc/:/host/proc/:ro"
+      - "/sys/fs/cgroup/:/host/sys/fs/cgroup:ro"
+    profiles:
+      - observability
+    networks:
+      - fiap-net
+
+volumes:
+  mysql-data:
+  mongo-data:
+  localstack-data:
+  clamav-data:
+
+networks:
+  fiap-net:
+    driver: bridge
