@@ -29,8 +29,28 @@ env:
   TF_VERSION: "1.9.5"
 
 jobs:
-  terraform:
+  lint:
+    name: terraform lint (fmt + validate)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: terraform fmt
+        run: terraform fmt -check -recursive
+      - name: terraform init (sem backend)
+        run: terraform init -backend=false -input=false
+      - name: terraform validate
+        run: terraform validate
+
+  plan-or-apply:
     name: terraform ${{ github.event.inputs.action || 'plan' }}
+    needs: lint
+    if: vars.AWS_DEPLOY_ENABLED == 'true' && (github.event_name != 'pull_request')
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -48,14 +68,8 @@ jobs:
           role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: terraform fmt
-        run: terraform fmt -check -recursive
-
       - name: terraform init
         run: terraform init -input=false
-
-      - name: terraform validate
-        run: terraform validate
 
       - name: terraform plan
         if: github.event.inputs.action != 'apply'
