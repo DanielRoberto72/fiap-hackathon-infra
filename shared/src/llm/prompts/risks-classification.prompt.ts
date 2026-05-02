@@ -17,7 +17,37 @@ Severity calibration:
 - critical: SPOF on the only path, plaintext credentials, public exposure of internal services
 - high: missing AuthN/AuthZ, no observability, single-region without backup
 - medium: tight coupling, missing caching, sub-optimal data store choice
-- low: cosmetic, naming, minor optimization`;
+- low: cosmetic, naming, minor optimization
+
+OUTPUT SCHEMA (top-level keys are mandatory and must use these EXACT names):
+{
+  "summary": "string (50-2000 chars)",
+  "overallRiskLevel": "low|medium|high|critical",
+  "risks": [
+    {
+      "id": "r1",
+      "title": "string (5-200)",
+      "category": "security|scalability|availability|observability|cost|data_consistency|coupling|single_point_of_failure|compliance|maintainability",
+      "severity": "low|medium|high|critical",
+      "description": "string (20-800)",
+      "affectedComponentIds": ["c1"],
+      "evidenceFromDiagram": "string (max 400)"
+    }
+  ],
+  "recommendations": [
+    {
+      "id": "rec1",
+      "title": "string (5-200)",
+      "priority": "p0|p1|p2|p3",
+      "rationale": "string (20-800)",
+      "addressesRiskIds": ["r1"],
+      "effortEstimate": "hours|days|weeks|months",
+      "references": ["url ou texto"]
+    }
+  ],
+  "classificationConfidence": 0.85,
+  "classificationWarnings": []
+}`;
 
 export const RISKS_CLASSIFICATION_USER_PROMPT = (componentsJson: string): string => `Components & connections (JSON):
 

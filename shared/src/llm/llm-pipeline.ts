@@ -46,6 +46,8 @@ export class LlmPipeline {
     try {
       components = await this.withRetry(() => this.config.visionProvider.extractComponents(input));
     } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[LlmPipeline] step1 (vision) falhou, fallback para mock:', (e as Error).message, (e as Error).stack);
       degraded = true;
       step1Provider = 'mock';
       components = await this.config.fallbackProvider.extractComponents(input);
@@ -55,6 +57,8 @@ export class LlmPipeline {
     try {
       risks = await this.withRetry(() => this.config.textProvider.classifyRisks(components));
     } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[LlmPipeline] step2 (text) falhou, fallback para mock:', (e as Error).message, (e as Error).stack);
       degraded = true;
       step2Provider = 'mock';
       risks = await this.config.fallbackProvider.classifyRisks(components);

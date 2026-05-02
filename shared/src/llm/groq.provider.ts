@@ -84,6 +84,10 @@ export class GroqLlmProvider implements LlmProvider {
     try {
       return RisksAndRecommendationsSchema.parse(parsed);
     } catch (zodError) {
+      // eslint-disable-next-line no-console
+      console.error('[Groq classifyRisks] raw JSON (first 1500 chars):', JSON.stringify(parsed).slice(0, 1500));
+      // eslint-disable-next-line no-console
+      console.error('[Groq classifyRisks] zod issues:', JSON.stringify((zodError as { issues?: unknown }).issues ?? zodError, null, 2).slice(0, 1500));
       throw new LlmSchemaValidationError(
         'Groq classifyRisks: response failed schema validation',
         this.name,

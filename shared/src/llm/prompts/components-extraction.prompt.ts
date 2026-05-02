@@ -11,7 +11,33 @@ CRITICAL RULES:
 6. Each component MUST have a unique short id like "c1", "c2", and connections must reference these ids.
 7. The "evidenceFromDiagram" field must quote a short visual cue (max 300 chars) that justifies the extraction.
 
-Be conservative. Prefer "unknown" over guessing.`;
+Be conservative. Prefer "unknown" over guessing.
+
+OUTPUT SCHEMA (top-level keys are mandatory and must use these EXACT names):
+{
+  "diagramTitle": "string or null",
+  "components": [
+    {
+      "id": "c1",
+      "label": "string",
+      "type": "web_application|mobile_application|api_gateway|load_balancer|microservice|monolith|database_relational|database_document|database_keyvalue|cache|message_queue|event_bus|object_storage|cdn|auth_service|function_serverless|container_orchestrator|observability_stack|external_api|user_actor|unknown",
+      "technology": "string or null",
+      "description": "string or null",
+      "evidenceFromDiagram": "string (max 300)"
+    }
+  ],
+  "connections": [
+    {
+      "fromComponentId": "c1",
+      "toComponentId": "c2",
+      "protocol": "REST|gRPC|AMQP|SQS|Kafka|WebSocket|TCP|unknown",
+      "direction": "unidirectional|bidirectional",
+      "isAsync": false
+    }
+  ],
+  "extractionConfidence": 0.85,
+  "extractionWarnings": []
+}`;
 
 export const COMPONENTS_EXTRACTION_USER_PROMPT = `Analyze the attached architecture diagram and produce the structured JSON described in the system prompt.
 
