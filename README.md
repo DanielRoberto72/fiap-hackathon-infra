@@ -44,13 +44,11 @@ A **FIAP Secure Systems** quer um MVP back-end que receba um diagrama de arquite
 
 Plataforma de **microsserviços NestJS** em **AWS EKS**, expostos por um **API Gateway HTTP API** com **JWT Lambda authorizer**. Receptor faz upload no **S3** com validação de MIME, magic bytes, ClamAV e idempotência; dispara um pipeline assíncrono via **SQS**; um worker executa pipeline de **IA em duas etapas** (Gemini Vision para extração + Groq Llama 3.3 para classificação de riscos), com guardrails Zod e fallback Mock; o relatório é entregue via **Event-Carried State Transfer** ao serviço de Reports, que persiste cópia local e expõe consulta REST.
 
-### Diagramas (3)
+### Diagrama de containers (visão geral)
 
-Os diagramas em Mermaid (renderizados nativamente pelo GitHub) estão em [`docs/arquitetura.md`](docs/arquitetura.md):
+![Arquitetura de Containers — visão C4](docs/diagrams/01-arquitetura-containers.png)
 
-- **Diagrama de Container (C4)** — visão geral com cliente, edge, EKS, S3, RDS, Mongo, SQS, Lambda, providers LLM.
-- **Sequência do happy path** — passo a passo do upload até o relatório.
-- **Fluxo de falha** — retry, fallback Mock, DLQ.
+Os outros 2 diagramas (sequência do happy path e fluxo de falha permanente da IA) estão em [`docs/arquitetura.md`](docs/arquitetura.md), com explicação ponto a ponto. Os fontes em DSL do [Eraser.io](https://app.eraser.io) ficam em [`docs/diagrams/sources/`](docs/diagrams/sources/) para facilitar manutenção.
 
 ### Microsserviços (5 serviços + 1 Lambda)
 

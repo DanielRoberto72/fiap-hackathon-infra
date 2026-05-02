@@ -1,0 +1,76 @@
+title FIAP Hackathon — Arquitetura de Containers
+
+// === Cliente ===
+Client [icon: user, label: "Cliente / curl / Postman"]
+
+// === AWS Edge ===
+APIGW [icon: aws-api-gateway, label: "API Gateway HTTP API\n+ CORS + Rate Limit"]
+
+// === AWS Lambda (auth) ===
+Authorizer [icon: aws-lambda, label: "lambda-authorizer\nvalida JWT HS256"]
+AuthLogin [icon: aws-lambda, label: "lambda-auth-login\nemail+bcrypt"]
+AuthRegister [icon: aws-lambda, label: "lambda-auth-register"]
+
+// === EKS — Microsserviços NestJS ===
+EKS [icon: aws-eks, label: "EKS — Kubernetes 1.30"] {
+  BFF [icon: nestjs, label: "BFF :3000\nagregador REST"]
+  Upload [icon: nestjs, label: "upload-orchestration :3001\nupload + ClamAV + S3 + SQS"]
+  Processing [icon: nestjs, label: "processing :3002\npipeline IA Gemini → Groq\n+ worker SQS"]
+  Report [icon: nestjs, label: "report :3003\nconsumer SQS + REST"]
+  ClamAV [icon: shield, label: "ClamAV sidecar :3310"]
+}
+
+// === Storage ===
+S3 [icon: aws-s3, label: "S3 fiap-hackathon-uploads\n(raw/{uuid}, lifecycle Glacier)"]
+RDS [icon: aws-rds, label: "RDS MySQL 8.0\n3 schemas (upload, report, auth)"]
+Mongo [icon: mongodb, label: "MongoDB Atlas\nfiap_hackathon_processing"]
+
+// === Mensageria ===
+QReq [icon: aws-sqs, label: "SQS analysis-requested\n+ DLQ"]
+QComp [icon: aws-sqs, label: "SQS analysis-completed\n+ DLQ"]
+QFail [icon: aws-sqs, label: "SQS analysis-failed"]
+
+// === Secrets ===
+Secrets [icon: aws-secrets-manager, label: "Secrets Manager\nJWT, DB, Gemini, Groq, Mongo"]
+
+// === Provedores LLM externos ===
+Gemini [icon: google, label: "Gemini 2.5 Flash\n(vision)"]
+Groq [icon: brain, label: "Groq Llama 3.3 70B\n(text)"]
+
+// === Observabilidade ===
+Datadog [icon: datadog, label: "Datadog APM\n+ Logs Pino + Metrics"]
+
+// === Conexões — fluxo síncrono ===
+Client > APIGW: HTTPS (TLS 1.2+)
+APIGW > Authorizer: validate Bearer
+APIGW > AuthLogin: POST /auth/login
+APIGW > AuthRegister: POST /auth/register
+APIGW > BFF: VPC Link + NLB interno
+BFF > Upload: REST interno
+BFF > Report: REST interno
+
+// === Conexões — fluxo assíncrono ===
+Upload > ClamAV: scan TCP 3310
+Upload > S3: PutObject raw/{uuid}
+Upload > RDS: INSERT analyses
+Upload > QReq: SendMessage analysis.requested
+QReq > Processing: long-poll
+Processing > S3: GetObject
+Processing > Gemini: vision → ComponentsExtraction
+Processing > Groq: text → RisksAndRecommendations
+Processing > Mongo: INSERT analysis_results
+Processing > QComp: publish (payload completo)
+Processing > QFail: publish em falha permanente
+QComp > Report: long-poll
+QFail > Report: long-poll
+Report > RDS: INSERT reports
+
+// === Conexões — secrets/observability ===
+AuthLogin > Secrets: GetSecretValue
+Processing > Secrets: GetSecretValue
+Report > Secrets: GetSecretValue
+Upload > Secrets: GetSecretValue
+BFF > Datadog: APM + Logs
+Upload > Datadog: APM + Logs
+Processing > Datadog: APM + Logs
+Report > Datadog: APM + Logs

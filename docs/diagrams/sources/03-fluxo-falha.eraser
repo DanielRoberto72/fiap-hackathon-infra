@@ -1,0 +1,30 @@
+title FIAP Hackathon — Fluxo de falha permanente da IA
+
+Start [shape: oval, label: "analysis.requested\nrecebido pelo processing"]
+Process [label: "ProcessAnalysisUseCase.execute()"]
+Step1 [label: "Step 1: Gemini Vision\nextractComponents()"]
+RetryGemini [shape: diamond, label: "retry < 3?"]
+Step1Mock [label: "Fallback: MockProvider\nextractComponents()"]
+Step2 [label: "Step 2: Groq Llama\nclassifyRisks()"]
+RetryGroq [shape: diamond, label: "retry < 3?"]
+Step2Mock [label: "Fallback: MockProvider\nclassifyRisks()"]
+Persist [label: "INSERT analysis_results (Mongo)"]
+PublishCompleted [shape: oval, label: "publish analysis.completed\ndegraded=true"]
+PublishFailed [shape: oval, label: "publish analysis.failed\nreason ∈ {DOWNLOAD_FAILED,\nSCHEMA_VALIDATION_FAILED,\nAI_PROVIDER_EXHAUSTED,\nTIMEOUT, INTERNAL}"]
+DLQ [shape: oval, label: "DLQ após 3 tentativas\n(alerta Datadog)"]
+
+Start > Process
+Process > Step1
+Step1 > RetryGemini: erro Gemini (timeout/5xx)
+RetryGemini > Step1: sim — exponential backoff
+RetryGemini > Step1Mock: não (esgotou)
+Step1Mock > Step2
+Step1 > Step2: sucesso
+Step2 > RetryGroq: erro Groq
+RetryGroq > Step2: sim
+RetryGroq > Step2Mock: não
+Step2Mock > Persist
+Step2 > Persist: sucesso
+Persist > PublishCompleted
+Process > PublishFailed: erro Zod (não-retentável) ou S3 GET falhou
+PublishFailed > DLQ: SQS visibilityTimeout exceeded

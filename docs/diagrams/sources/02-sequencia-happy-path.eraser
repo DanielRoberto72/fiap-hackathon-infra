@@ -1,0 +1,54 @@
+title FIAP Hackathon — Sequência do happy path
+
+Client [icon: user]
+APIGW [icon: aws-api-gateway, label: "API Gateway"]
+Authorizer [icon: aws-lambda, label: "Authorizer"]
+BFF [icon: nestjs, label: "BFF"]
+Upload [icon: nestjs, label: "upload-orchestration"]
+ClamAV [icon: shield]
+S3 [icon: aws-s3]
+RDS [icon: aws-rds, label: "MySQL"]
+QReq [icon: aws-sqs, label: "SQS analysis-requested"]
+Processing [icon: nestjs, label: "processing"]
+Gemini [icon: google, label: "Gemini Vision"]
+Groq [icon: brain, label: "Groq Llama"]
+Mongo [icon: mongodb]
+QComp [icon: aws-sqs, label: "SQS analysis-completed"]
+Report [icon: nestjs, label: "report"]
+
+Client > APIGW: POST /api/analyses (file, JWT, Idempotency-Key)
+APIGW > Authorizer: validate JWT
+Authorizer --> APIGW: isAuthorized=true (sub, scopes)
+APIGW > BFF: POST /api/analyses
+BFF > Upload: POST /api/analyses (multipart)
+Upload > Upload: valida MIME + magic bytes + size
+Upload > ClamAV: scan(buffer)
+ClamAV --> Upload: clean
+Upload > S3: PutObject raw/{uuid}
+Upload > RDS: INSERT analyses (RECEIVED)
+Upload > QReq: SendMessage analysis.requested
+Upload --> BFF: 202 {analysisId, status, receivedAt}
+BFF --> APIGW: 202
+APIGW --> Client: 202 Accepted
+
+// === assíncrono ===
+Processing > QReq: ReceiveMessage
+Processing > S3: GetObject
+Processing > Gemini: ComponentsExtraction (Zod)
+Gemini --> Processing: JSON validado
+Processing > Groq: RisksAndRecommendations (Zod)
+Groq --> Processing: JSON validado
+Processing > Mongo: INSERT analysis_results
+Processing > QComp: SendMessage analysis.completed (payload completo)
+Processing > QReq: DeleteMessage
+Report > QComp: ReceiveMessage
+Report > RDS: INSERT reports
+Report > QComp: DeleteMessage
+
+// === consulta do relatório ===
+Client > APIGW: GET /api/reports/{id}
+APIGW > BFF: GET /api/reports/{id}
+BFF > Report: GET /api/reports/{id}
+Report --> BFF: 200 OK relatório completo
+BFF --> APIGW: 200 OK
+APIGW --> Client: 200 OK

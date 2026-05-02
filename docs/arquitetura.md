@@ -1,146 +1,55 @@
-# Diagrama de arquitetura
+# Diagramas de arquitetura
 
-## Visão de alto nível (C4 — Container)
+Diagramas gerados em [Eraser.io](https://app.eraser.io) e exportados como PNG. Os fontes (DSL do Eraser) ficam em [`diagrams/sources/`](diagrams/sources/) para facilitar manutenção.
 
-```mermaid
-graph TB
-  Client[Cliente / curl / Postman]
-  subgraph "AWS API Gateway HTTP API"
-    APIGW[HTTP API + JWT Authorizer]
-  end
-  subgraph "AWS Lambda"
-    LAuth[lambda-auth login + register]
-    LAuthz[lambda-auth authorizer]
-  end
-  subgraph "EKS"
-    BFF[BFF NestJS :3000]
-    UO[upload-orchestration NestJS :3001]
-    PR[processing NestJS :3002 + worker SQS]
-    RP[report NestJS :3003 + worker SQS]
-    CV[ClamAV sidecar TCP 3310]
-  end
-  subgraph "AWS Storage"
-    S3[(S3 bucket uploads/raw)]
-    RDS[(RDS MySQL — 3 schemas)]
-    Mongo[(MongoDB Atlas — analysis_results)]
-    Sec[Secrets Manager — JWT, RDS, Gemini, Groq, Mongo]
-  end
-  subgraph "AWS SQS"
-    QReq[analysis-requested + DLQ]
-    QComp[analysis-completed + DLQ]
-    QFail[analysis-failed]
-  end
-  subgraph "Provedores LLM"
-    Gemini[Google Gemini 2.5 Flash]
-    Groq[Groq Llama 3.3 70B]
-  end
+---
 
-  Client -->|HTTPS| APIGW
-  APIGW -->|/auth/*| LAuth
-  APIGW -->|qualquer rota privada| LAuthz
-  APIGW -->|/api/* via VPC Link + NLB| BFF
-  BFF -->|REST interno| UO
-  BFF -->|REST interno| RP
-  UO -->|scan TCP| CV
-  UO -->|PUT| S3
-  UO -->|INSERT| RDS
-  UO -->|publish| QReq
-  QReq -->|consume| PR
-  PR -->|GET| S3
-  PR -->|vision| Gemini
-  PR -->|text| Groq
-  PR -->|INSERT| Mongo
-  PR -->|publish payload completo| QComp
-  PR -->|publish em falha| QFail
-  QComp -->|consume| RP
-  QFail -->|consume| RP
-  RP -->|INSERT| RDS
-  Client -->|GET /reports/:id| APIGW
-  LAuth -->|GetSecretValue| Sec
-  PR -->|GetSecretValue| Sec
-  RP -->|GetSecretValue| Sec
-  UO -->|GetSecretValue| Sec
-```
+## 1. Visão de containers (C4 Container)
 
-## Sequência do happy path
+Visão de alto nível mostrando cliente, edge (API Gateway + Lambdas de auth), os 4 microsserviços NestJS rodando no EKS, storage (S3, RDS, MongoDB Atlas), mensageria (3 filas SQS), Secrets Manager, provedores LLM externos (Gemini Vision e Groq Llama 3.3) e a camada de observabilidade Datadog.
 
-```mermaid
-sequenceDiagram
-  participant C as Cliente
-  participant GW as API Gateway
-  participant Az as authorizer (Lambda)
-  participant BFF as BFF NestJS
-  participant UO as upload-orchestration
-  participant CV as ClamAV
-  participant S3 as S3
-  participant RDS as MySQL
-  participant Q1 as SQS analysis-requested
-  participant PR as processing
-  participant LLM1 as Gemini Vision
-  participant LLM2 as Groq Llama
-  participant Mongo as MongoDB
-  participant Q2 as SQS analysis-completed
-  participant RP as report
+![Arquitetura de Containers — visão C4](diagrams/01-arquitetura-containers.png)
 
-  C->>GW: POST /api/analyses (file, JWT)
-  GW->>Az: validate JWT
-  Az-->>GW: isAuthorized=true (sub, scopes)
-  GW->>BFF: POST /api/analyses (file)
-  BFF->>UO: POST /api/analyses (file)
-  UO->>UO: valida MIME + magic bytes + size
-  UO->>CV: scan(buffer)
-  CV-->>UO: clean
-  UO->>S3: PutObject raw/{uuid}
-  UO->>RDS: INSERT analyses status=RECEIVED
-  UO->>Q1: SendMessage analysis.requested
-  UO-->>BFF: 202 Accepted {analysisId}
-  BFF-->>C: 202 Accepted {analysisId}
+**Pontos a destacar nesta visão:**
 
-  rect rgb(240,248,255)
-    note over Q1,RP: assíncrono
-    PR->>Q1: ReceiveMessage
-    PR->>S3: GetObject
-    PR->>LLM1: ComponentsExtraction (vision)
-    LLM1-->>PR: JSON validado por Zod
-    PR->>LLM2: RisksAndRecommendations (text)
-    LLM2-->>PR: JSON validado por Zod
-    PR->>Mongo: INSERT analysis_results
-    PR->>Q2: SendMessage analysis.completed (payload completo)
-    PR->>Q1: DeleteMessage
-    RP->>Q2: ReceiveMessage
-    RP->>RDS: INSERT reports
-    RP->>Q2: DeleteMessage
-  end
+- O cliente fala apenas com o **API Gateway HTTP API**, que aplica TLS, CORS e rate limit antes de qualquer coisa.
+- O **Lambda Authorizer** valida o JWT HS256 em todas as rotas privadas; rotas `/auth/*` (login e register) entram em Lambdas dedicadas.
+- O tráfego do API Gateway para o cluster EKS passa por um **VPC Link + NLB interno** — nenhum microsserviço fica exposto publicamente.
+- Cada serviço NestJS tem seu **DB próprio** (princípio de bounded context): `upload-orchestration` e `report` em MySQL via Prisma; `processing` em MongoDB Atlas via Mongoose.
+- O `processing` é o único serviço que fala com os **provedores LLM externos** — os outros não conhecem nada sobre IA.
+- Todos os pods consomem credenciais via **AWS Secrets Manager + IRSA** (uma role por serviço, com privilégio mínimo definido em `terraform/iam.tf`).
 
-  C->>GW: GET /api/reports/{analysisId}
-  GW->>BFF: GET /api/reports/{id}
-  BFF->>RP: GET /api/reports/{id}
-  RP-->>BFF: 200 OK relatório completo
-  BFF-->>GW: 200 OK
-  GW-->>C: 200 OK
-```
+---
 
-## Fluxo de falha permanente
+## 2. Sequência do happy path
 
-```mermaid
-flowchart TD
-  Start[analysis.requested]
-  P[processing.use-case]
-  Retry{retry < 3?}
-  Mock[Fallback Mock provider]
-  Fail[publish analysis.failed]
-  DLQ[Mensagem vai pra DLQ após 3 tentativas]
+Passo a passo do fluxo síncrono + assíncrono, do `POST /api/analyses` do cliente até o `GET /api/reports/{id}` retornando o relatório completo.
 
-  Start --> P
-  P -->|Gemini falha| Retry
-  Retry -->|sim| P
-  Retry -->|não| Mock
-  Mock -->|sucesso| Continue[publish analysis.completed degraded=true]
-  Mock -->|falha| Fail
-  P -->|S3 GET falha| Fail
-  P -->|Schema Zod falha| Fail
-  Fail --> DLQ
-```
+![Sequência — happy path](diagrams/02-sequencia-happy-path.png)
+
+**Pontos a destacar:**
+
+- Os passos **1-8** rodam síncronos: cliente recebe `202 Accepted` em segundos com o `analysisId`. O upload é validado (MIME + magic bytes + tamanho), passa pelo ClamAV, é gravado no S3 e a mensagem `analysis.requested` vai pra fila.
+- Os passos **9-14** rodam **assíncronos**: o `processing` consome a fila, baixa o arquivo do S3, executa o pipeline IA em duas etapas, persiste o resultado no Mongo e publica `analysis.completed` com o payload completo (Event-Carried State Transfer).
+- Os passos **15-16** são o `report` consumindo o evento e materializando uma cópia local em MySQL — fica autossuficiente para responder consultas sem chamar nenhum outro serviço.
+- Os passos **17-19** são consulta do cliente: `GET /api/reports/:id` passa pelo BFF e devolve o relatório completo.
+
+---
+
+## 3. Fluxo de falha permanente da IA
+
+Como o sistema reage quando algum passo do pipeline IA falha de forma permanente: retry exponencial, fallback para Mock provider, e classificação de falha quando nem o Mock resolve.
+
+![Fluxo de falha permanente da IA](diagrams/03-fluxo-falha.png)
+
+**Pontos a destacar:**
+
+- Cada chamada a Gemini ou Groq tem **retry 3x com exponential backoff**.
+- Se mesmo após retries o provider externo falhar, o sistema cai automaticamente para o **MockLlmProvider** (saída determinística) — o evento `analysis.completed` ainda é publicado, mas com `degraded: true` para sinalizar ao consumidor que precisa de revisão humana.
+- Falhas **não-retentáveis** (Zod schema validation falhou, S3 GET falhou) vão direto para `analysis.failed`, com `reason` explícito.
+- Após 3 tentativas no SQS, a mensagem vai para a **DLQ** e dispara alerta no Datadog.
+
+---
 
 ## Bounded contexts e ownership de dados
 
@@ -152,4 +61,4 @@ flowchart TD
 | Auth | `lambda-auth` | MySQL `fiap_hackathon_auth` | — | MySQL |
 | Edge | `bff` | sem persistência | — | — |
 
-Princípio: **cada serviço dono de seu DB**. Nenhum serviço lê o banco do outro. A integração entre `processing` e `report` é via Event-Carried State Transfer no SQS (payload completo no `analysis.completed`).
+**Princípio inviolável**: cada serviço dono do seu DB. Nenhum serviço lê o banco do outro. A integração entre `processing` e `report` é via Event-Carried State Transfer no SQS (payload completo no `analysis.completed`).
