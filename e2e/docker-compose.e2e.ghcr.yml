@@ -1,0 +1,25 @@
+name: fiap-hackathon-e2e
+
+# Override que substitui o `build:` local por `image:` puxando do GHCR.
+# Uso: docker compose -f docker-compose.e2e.yml -f docker-compose.e2e.ghcr.yml up -d --wait
+#
+# Ideal para o job e2e-smoke do CI: valida ponta-a-ponta que as imagens
+# publicadas em ghcr.io/danielroberto72/* funcionam juntas, sem precisar
+# clonar os 5 repos no runner.
+
+services:
+  upload-orchestration:
+    image: ghcr.io/danielroberto72/fiap-hackathon-upload-orchestration:${IMAGE_TAG:-latest}
+    build: !reset null
+
+  processing:
+    image: ghcr.io/danielroberto72/fiap-hackathon-processing:${IMAGE_TAG:-latest}
+    build: !reset null
+
+  report:
+    image: ghcr.io/danielroberto72/fiap-hackathon-report:${IMAGE_TAG:-latest}
+    build: !reset null
+
+  bff:
+    image: ghcr.io/danielroberto72/fiap-hackathon-bff:${IMAGE_TAG:-latest}
+    build: !reset null

@@ -1,0 +1,88 @@
+name: e2e-smoke
+
+# Smoke test ponta-a-ponta usando as imagens publicadas no GHCR.
+# Sobe MySQL + MongoDB + LocalStack + os 4 microsserviços (BFF, Upload,
+# Processing, Report) via docker compose, dispara o fluxo POST /api/analyses
+# e valida que o relatório é gerado em GET /api/reports/{id}.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'e2e/**'
+      - 'docker/**'
+      - 'localstack-init/**'
+      - '.github/workflows/e2e-smoke.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'e2e/**'
+      - 'docker/**'
+      - 'localstack-init/**'
+      - '.github/workflows/e2e-smoke.yml'
+  workflow_dispatch: {}
+  schedule:
+    # nightly às 06:00 UTC (03:00 BRT) — detecta regressão em qualquer imagem GHCR
+    - cron: '0 6 * * *'
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  smoke:
+    name: e2e smoke (GHCR images)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: e2e
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Login no GHCR (pull de imagens públicas)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull das imagens GHCR
+        run: docker compose -f docker-compose.e2e.yml -f docker-compose.e2e.ghcr.yml pull
+
+      - name: Subir stack
+        run: docker compose -f docker-compose.e2e.yml -f docker-compose.e2e.ghcr.yml up -d --wait
+
+      - name: Aguardar estabilização (10s)
+        run: sleep 10
+
+      - name: Instalar deps do test runner
+        run: npm ci --no-audit --no-fund
+
+      - name: Rodar specs E2E
+        run: npm test
+        env:
+          BFF_BASE_URL: http://localhost:3000
+
+      - name: Coletar logs em caso de falha
+        if: failure()
+        run: |
+          echo "=== docker ps ==="
+          docker ps -a
+          echo "=== logs upload-orchestration ==="
+          docker compose -f docker-compose.e2e.yml -f docker-compose.e2e.ghcr.yml logs upload-orchestration || true
+          echo "=== logs processing ==="
+          docker compose -f docker-compose.e2e.yml -f docker-compose.e2e.ghcr.yml logs processing || true
+          echo "=== logs report ==="
+          docker compose -f docker-compose.e2e.yml -f docker-compose.e2e.ghcr.yml logs report || true
+          echo "=== logs bff ==="
+          docker compose -f docker-compose.e2e.yml -f docker-compose.e2e.ghcr.yml logs bff || true
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.e2e.yml -f docker-compose.e2e.ghcr.yml down -v

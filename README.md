@@ -167,6 +167,35 @@ curl http://localhost:3000/api/reports/<analysisId> | jq
 
 Ver [`terraform/`](terraform/) e [`helm/README.md`](helm/README.md) — Terraform provisiona toda a infraestrutura (VPC + EKS + ECR + RDS + S3 + SQS + Lambda + API Gateway + IAM IRSA), e o Helm chart unificado faz o `upgrade --install` dos 4 microsserviços.
 
+> **Status do deploy AWS**: a stack Terraform + Helm está pronta e validada (`terraform plan` limpo, `helm lint` verde no CI), mas não foi efetivamente aplicada em conta AWS para esta entrega — ver [ADR-002 D5/D16/D17](docs/adr-002-arquitetura-fiap-hackathon.md) para a decisão estratégica de adotar **deploy local via GHCR** como caminho de demonstração.
+
+### Pull do GHCR + `make full` (caminho recomendado para avaliação)
+
+Cada push em `main` dos 4 serviços NestJS publica imagem multi-tag no **GitHub Container Registry**:
+
+- `ghcr.io/danielroberto72/fiap-hackathon-bff:latest` + `:sha-<short>`
+- `ghcr.io/danielroberto72/fiap-hackathon-upload-orchestration:latest` + `:sha-<short>`
+- `ghcr.io/danielroberto72/fiap-hackathon-processing:latest` + `:sha-<short>`
+- `ghcr.io/danielroberto72/fiap-hackathon-report:latest` + `:sha-<short>`
+
+Para rodar o sistema completo **sem clonar os 5 repos de serviço** (apenas o `infra`):
+
+```bash
+# 1. Clonar APENAS o infra
+git clone https://github.com/DanielRoberto72/fiap-hackathon-infra
+cd fiap-hackathon-infra/e2e
+
+# 2. Login no GHCR (token PAT com escopo read:packages, ou `gh auth token`)
+echo $GHCR_TOKEN | docker login ghcr.io -u <seu-user> --password-stdin
+
+# 3. Subir tudo: pull GHCR + MySQL + Mongo + LocalStack + Jest E2E + tear down
+make full-ghcr
+```
+
+`make full-ghcr` usa o override [`docker-compose.e2e.ghcr.yml`](e2e/docker-compose.e2e.ghcr.yml) que troca `build:` local por `image: ghcr.io/danielroberto72/...:latest`. Para fixar uma versão específica: `IMAGE_TAG=sha-abc1234 make full-ghcr`.
+
+O job [`e2e-smoke`](.github/workflows/e2e-smoke.yml) executa exatamente esse fluxo a cada push no `infra` e em schedule diário (06:00 UTC), atuando como **regression gate** das imagens publicadas.
+
 ---
 
 ## 5. Repositórios entregues

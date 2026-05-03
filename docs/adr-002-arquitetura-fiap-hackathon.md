@@ -178,6 +178,23 @@ Daniel já possui um ecossistema FIAP maduro (NestJS, Clean Architecture, MySQL/
 
 **Por quê:** Custo controlado (≤ US$ 5), ciclo de desenvolvimento rápido em local, demo impressionante em EKS real.
 
+> **⚠️ Status (2026-05-03) — Não realizado por escolha estratégica.** O PDF do hackathon aceita explicitamente "Deploy local **OU** cloud". Diante da contagem regressiva e do custo de oportunidade de provisionar a stack AWS apenas para a demo, foi decidido em **D17** trocar o caminho de demonstração por **deploy local via GHCR**. O módulo Terraform e o chart Helm continuam neste repositório como evidência de capacidade de IaC (validados via `terraform fmt/validate` e `helm lint/template` no CI), mas **não foram aplicados em conta real**. As decisões D6 (SQS), D7 (S3) e D11 (API Gateway + Lambda) seguem materializadas via **LocalStack** + **MongoDB Atlas M0** (esse último, de fato, em cloud).
+
+### D17 — Deploy local via GHCR como caminho de demonstração
+**Escolhido:**
+- Cada push em `main` dos 4 serviços NestJS publica imagem multi-tag em **`ghcr.io/danielroberto72/fiap-hackathon-<servico>`** (`:latest`, `:sha-<short>`, `:main`) via `docker/build-push-action@v5` com cache `type=gha`.
+- O `lambda-auth` empacota o artefato `.zip` como **GitHub Actions artifact** (retention 30d) — sem `aws lambda update-function-code`.
+- O `infra` ganha o workflow [`e2e-smoke.yml`](.github/workflows/e2e-smoke.yml) que executa em push, PR e schedule diário (06:00 UTC): pull das imagens GHCR + sobe MySQL + Mongo + LocalStack + os 4 serviços via `docker-compose.e2e.ghcr.yml` + roda specs Jest validando POST /api/analyses → GET /api/reports/{id}.
+- Avaliador roda o sistema completo com **um único `make full-ghcr`** clonando apenas o `infra` (não precisa clonar os 5 repos de serviço).
+- Workflow `terraform.yml` mantém `lint` (fmt + validate) sempre, e `plan/apply` gateado em `vars.AWS_DEPLOY_ENABLED == 'true'` — preparado, não armado.
+
+**Alternativas rejeitadas:**
+- Manter rota AWS — custo de oportunidade alto, sem valor incremental para a banca dado que o PDF aceita local.
+- Docker Hub — limite de pulls anônimos (100 por 6h) atrapalha o avaliador; GHCR é gratuito, ilimitado para repositórios públicos do mesmo owner e integra nativamente via `secrets.GITHUB_TOKEN`.
+- Build local sem registry — não cobre o requisito "pipeline CI/CD com Build + Testes + Deploy" do PDF, e o avaliador precisaria clonar todos os repos.
+
+**Por quê:** Aderência cirúrgica ao requisito formal do PDF ("Pipeline CI/CD contendo: Build; Testes; Deploy local"), reprodutibilidade verificável remotamente (qualquer um consegue rodar `make full-ghcr` e ver o sistema funcionar), regression gate automatizado via `e2e-smoke` agendado, e custo zero de infra. A capacidade de subir em AWS continua provada pelo `terraform validate` + `helm lint` verdes no CI — armar é uma flag `AWS_DEPLOY_ENABLED=true` de distância.
+
 ## Consequências
 
 ### Positivas
