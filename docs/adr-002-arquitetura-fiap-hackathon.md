@@ -195,6 +195,21 @@ Daniel já possui um ecossistema FIAP maduro (NestJS, Clean Architecture, MySQL/
 
 **Por quê:** Aderência cirúrgica ao requisito formal do PDF ("Pipeline CI/CD contendo: Build; Testes; Deploy local"), reprodutibilidade verificável remotamente (qualquer um consegue rodar `make full-ghcr` e ver o sistema funcionar), regression gate automatizado via `e2e-smoke` agendado, e custo zero de infra. A capacidade de subir em AWS continua provada pelo `terraform validate` + `helm lint` verdes no CI — armar é uma flag `AWS_DEPLOY_ENABLED=true` de distância.
 
+### D18 — Lambda-auth roda serverless local via LocalStack Lambda + API Gateway HTTP
+**Escolhido:**
+- Workflow do `fiap-hackathon-lambda-auth` empacota o zip (`tsc + tsc-alias` para resolver paths `@shared/*`, `@application/*` etc.) e promove para **GitHub Release rolling** `release-latest` (`softprops/action-gh-release@v2` com `make_latest=true`). O repositório é o único dos 6 que é público — necessário para que o asset do Release seja baixável sem autenticação.
+- LocalStack expõe os serviços `lambda,iam,apigatewayv2,logs` (além de `s3,sqs,sns,secretsmanager` já existentes) com `LAMBDA_RUNTIME_EXECUTOR=docker` e Docker socket montado.
+- Script `localstack-init/02-bootstrap-auth.sh` roda automaticamente no ready do LocalStack: baixa o zip do Release, cria role IAM, cria 3 funções Lambda (`fiap-hackathon-auth-login`, `-auth-register`, `-authorizer`), cria HTTP API com **custom id determinístico** `fiapauth` (via tag `_custom_id_=fiapauth` suportada pelo LocalStack), wireia rotas `POST /auth/login` e `POST /auth/register` com integrações `AWS_PROXY`, e cria stage `local` com auto-deploy.
+- BFF (e specs E2E) acessam autenticação via URL determinística `http://localstack:4566/_aws/execute-api/fiapauth/local`.
+- Tabela `users` é criada pelo `docker/mysql-init/01-databases.sql` (espelha o `schema.prisma`) para evitar dependência de `prisma migrate deploy` em runtime.
+
+**Alternativas rejeitadas:**
+- Wrapper Express embrulhando os handlers Lambda — perde a fidelidade arquitetural (deixa de ser serverless em ambiente algum), exige código novo no `lambda-auth`, e o BFF passaria a chamar Node-server, não API Gateway.
+- AWS Lambda RIE (`public.ecr.aws/lambda/nodejs`) — exige container por handler, BFF teria que invocar via endpoint `/2015-03-31/functions/.../invocations` (não REST nativo).
+- Empacotar zip dentro de uma 5ª imagem Docker GHCR — funciona com repos privados, mas vira camada extra de indireção. Public Release é mais natural.
+
+**Por quê:** Mantém autenticação **serverless de verdade** (Lambda + API Gateway) mesmo no ambiente local de hackathon. O BFF não sabe a diferença entre LocalStack e AWS real — mesmo `AUTH_BASE_URL`, mesmas chamadas REST. Provei que a stack funciona ponta a ponta sem precisar provisionar nada na AWS. URL determinística via `_custom_id_` elimina a necessidade de discovery em runtime.
+
 ## Consequências
 
 ### Positivas

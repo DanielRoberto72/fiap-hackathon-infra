@@ -32,18 +32,24 @@ services:
   localstack:
     image: localstack/localstack:3.7
     environment:
-      SERVICES: s3,sqs,sns,secretsmanager
+      SERVICES: s3,sqs,sns,secretsmanager,lambda,iam,apigateway,apigatewayv2,logs
       DEFAULT_REGION: us-east-1
       AWS_DEFAULT_REGION: us-east-1
+      LAMBDA_RUNTIME_EXECUTOR: docker
+      LAMBDA_DOCKER_NETWORK: fiap-hackathon-e2e_e2e
+      LAMBDA_REMOVE_CONTAINERS: "true"
+      LAMBDA_KEEPALIVE_MS: "600000"
       DEBUG: "0"
+      LAMBDA_AUTH_RELEASE_URL: https://github.com/DanielRoberto72/fiap-hackathon-lambda-auth/releases/download/release-latest/lambda-auth.zip
     ports: ["4566:4566"]
     volumes:
       - ../localstack-init:/etc/localstack/init/ready.d:ro
+      - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
       interval: 5s
       timeout: 3s
-      retries: 30
+      retries: 60
     networks: [e2e]
 
   upload-orchestration:
@@ -111,10 +117,11 @@ services:
       PORT: "3000"
       UPLOAD_ORCHESTRATION_BASE_URL: http://upload-orchestration:3001
       REPORT_BASE_URL: http://report:3003
-      AUTH_BASE_URL: http://localhost:3004
+      AUTH_BASE_URL: http://localstack:4566/_aws/execute-api/fiapauth/local
     depends_on:
       - upload-orchestration
       - report
+      - localstack
     ports: ["3000:3000"]
     networks: [e2e]
 

@@ -171,12 +171,14 @@ Ver [`terraform/`](terraform/) e [`helm/README.md`](helm/README.md) — Terrafor
 
 ### Pull do GHCR + `make full` (caminho recomendado para avaliação)
 
-Cada push em `main` dos 4 serviços NestJS publica imagem multi-tag no **GitHub Container Registry**:
+Cada push em `main` dos 4 serviços NestJS publica imagem **multi-arch** (linux/amd64 + linux/arm64) no **GitHub Container Registry**:
 
 - `ghcr.io/danielroberto72/fiap-hackathon-bff:latest` + `:sha-<short>`
 - `ghcr.io/danielroberto72/fiap-hackathon-upload-orchestration:latest` + `:sha-<short>`
 - `ghcr.io/danielroberto72/fiap-hackathon-processing:latest` + `:sha-<short>`
 - `ghcr.io/danielroberto72/fiap-hackathon-report:latest` + `:sha-<short>`
+
+O `fiap-hackathon-lambda-auth` é empacotado como zip e publicado em **GitHub Release** (`release-latest` rolling), consumido pelo bootstrap do LocalStack que cria 3 funções Lambda (`auth-login`, `auth-register`, `authorizer`) + HTTP API com custom id `fiapauth`. Ou seja, autenticação roda **serverless de verdade** mesmo em ambiente local.
 
 Para rodar o sistema completo **sem clonar os 5 repos de serviço** (apenas o `infra`):
 
