@@ -1,0 +1,339 @@
+{
+  "info": {
+    "name": "FIAP Hackathon — Análise de Diagramas IA",
+    "description": "Collection oficial para demonstração e validação dos microsserviços FIAP Hackathon (IADT+SOAT). Cobre autenticação serverless (Lambda + API Gateway via LocalStack), upload + pipeline IA assíncrono e consulta do relatório consolidado. Todos os NestJS têm setGlobalPrefix('api'), por isso as rotas começam com /api/.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "fiap-hackathon-2026",
+    "version": "1.1.0"
+  },
+  "variable": [
+    {
+      "key": "bff_base",
+      "value": "http://localhost:3000",
+      "description": "URL pública do BFF NestJS."
+    },
+    {
+      "key": "auth_base",
+      "value": "http://localhost:4566/restapis/fiapauth/local/_user_request_",
+      "description": "URL determinística do API Gateway emulado pelo LocalStack (custom id fiapauth, stage local)."
+    },
+    {
+      "key": "upload_base",
+      "value": "http://localhost:3001",
+      "description": "Upload-orchestration (acesso direto p/ debug)."
+    },
+    {
+      "key": "report_base",
+      "value": "http://localhost:3003",
+      "description": "Report (acesso direto p/ debug)."
+    },
+    {
+      "key": "test_email",
+      "value": "daniel@fiap.com"
+    },
+    {
+      "key": "test_password",
+      "value": "Hackathon123!"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "description": "JWT preenchido automaticamente por POST /auth/login."
+    },
+    {
+      "key": "analysis_id",
+      "value": "",
+      "description": "ID preenchido automaticamente por POST /api/analyses."
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Healthchecks",
+      "description": "Confirma que todos os containers subiram saudáveis antes da demo. Todos os NestJS expõem /api/health/live e /api/health/ready.",
+      "item": [
+        {
+          "name": "BFF live",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{bff_base}}/api/health/live", "host": ["{{bff_base}}"], "path": ["api", "health", "live"] }
+          }
+        },
+        {
+          "name": "BFF ready",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{bff_base}}/api/health/ready", "host": ["{{bff_base}}"], "path": ["api", "health", "ready"] }
+          }
+        },
+        {
+          "name": "Upload-orchestration live",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{upload_base}}/api/health/live", "host": ["{{upload_base}}"], "path": ["api", "health", "live"] }
+          }
+        },
+        {
+          "name": "Upload-orchestration ready",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{upload_base}}/api/health/ready", "host": ["{{upload_base}}"], "path": ["api", "health", "ready"] }
+          }
+        },
+        {
+          "name": "Report live",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{report_base}}/api/health/live", "host": ["{{report_base}}"], "path": ["api", "health", "live"] }
+          }
+        },
+        {
+          "name": "Report ready",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{report_base}}/api/health/ready", "host": ["{{report_base}}"], "path": ["api", "health", "ready"] }
+          }
+        },
+        {
+          "name": "LocalStack health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "http://localhost:4566/_localstack/health", "host": ["http://localhost:4566/_localstack/health"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Autenticação (Lambda + API Gateway via LocalStack)",
+      "description": "Demonstra que auth roda serverless de verdade no LocalStack: AWS Lambda Node.js 20 + API Gateway REST API. Endpoints expostos pelo bootstrap em localstack-init/02-bootstrap-auth.sh.",
+      "item": [
+        {
+          "name": "POST /auth/register — cria usuário novo",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{test_email}}\",\n  \"password\": \"{{test_password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{auth_base}}/auth/register",
+              "host": ["{{auth_base}}"],
+              "path": ["auth", "register"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('register devolve 201/200 ou 409 se ja existir', function () {",
+                  "  pm.expect([200, 201, 409]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.test('resposta tem id e email', function () {",
+                  "    pm.expect(body).to.have.property('id');",
+                  "    pm.expect(body.email).to.eql(pm.collectionVariables.get('test_email'));",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /auth/login — devolve JWT HS256",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{test_email}}\",\n  \"password\": \"{{test_password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{auth_base}}/auth/login",
+              "host": ["{{auth_base}}"],
+              "path": ["auth", "login"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('login devolve 200 com accessToken', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('accessToken');",
+                  "  pm.expect(body.tokenType).to.eql('Bearer');",
+                  "  pm.expect(body.accessToken.split('.')).to.have.lengthOf(3);",
+                  "  pm.collectionVariables.set('access_token', body.accessToken);",
+                  "  console.log('JWT salvo em access_token');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Pipeline de análise IA",
+      "description": "Caminho feliz: upload do diagrama PNG/JPG → processing assíncrono (Gemini Vision + Groq Llama via SQS + LocalStack) → report materializado.",
+      "item": [
+        {
+          "name": "POST /api/analyses — sobe diagrama (multipart)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "description": "JWT obtido em /auth/login. Em produção o Lambda Authorizer valida antes do BFF receber."
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "description": "Obrigatório — chamadas com a mesma chave devolvem o mesmo analysisId."
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "Anexe um diagrama PNG/JPG (ex.: fiap-hackathon-infra/docs/diagrams/01-arquitetura-containers.png)."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{bff_base}}/api/analyses",
+              "host": ["{{bff_base}}"],
+              "path": ["api", "analyses"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('upload aceito com 202', function () {",
+                  "  pm.response.to.have.status(202);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('analysisId');",
+                  "  pm.collectionVariables.set('analysis_id', body.analysisId);",
+                  "  console.log('analysis_id =', body.analysisId);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/analyses/{id}/status — status do processamento",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{bff_base}}/api/analyses/{{analysis_id}}/status",
+              "host": ["{{bff_base}}"],
+              "path": ["api", "analyses", "{{analysis_id}}", "status"]
+            },
+            "description": "Retorna o estado: RECEIVED → PROCESSING → ANALYZED (ou FAILED). Pode rodar 1-2x até ANALYZED."
+          }
+        },
+        {
+          "name": "GET /api/reports/{id} — relatório consolidado",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{bff_base}}/api/reports/{{analysis_id}}",
+              "host": ["{{bff_base}}"],
+              "path": ["api", "reports", "{{analysis_id}}"]
+            },
+            "description": "Pode retornar 404 nos primeiros ~10s enquanto o pipeline IA roda. Re-envie até 200."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('relatório completo', function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql('ANALYZED');",
+                  "  });",
+                  "} else {",
+                  "  pm.test('ainda processando — tentar de novo em ~5s', function () {",
+                  "    pm.expect([202, 404]).to.include(pm.response.code);",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Cenários alternativos",
+      "description": "Casos para roteiro do vídeo: validação de auth e erros.",
+      "item": [
+        {
+          "name": "POST /auth/login — senha errada → 401",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{test_email}}\",\n  \"password\": \"senhaerrada!\"\n}"
+            },
+            "url": {
+              "raw": "{{auth_base}}/auth/login",
+              "host": ["{{auth_base}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "POST /api/analyses — sem Authorization → 401",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": [] }
+              ]
+            },
+            "url": {
+              "raw": "{{bff_base}}/api/analyses",
+              "host": ["{{bff_base}}"],
+              "path": ["api", "analyses"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

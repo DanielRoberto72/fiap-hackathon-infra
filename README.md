@@ -597,7 +597,9 @@ Mapeamento direto de cada bullet do PDF do hackathon ao que foi entregue:
 
 ## 14. Vídeo de demonstração
 
-🟡 **Em produção** — será gravado entre 26-27/05 demonstrando arquitetura, fluxo completo, upload, processamento e relatório.
+▶️ **Assistir no YouTube**: <https://youtu.be/J43rU2ctHPs>
+
+Demonstra a arquitetura completa, o fluxo end-to-end (upload → análise IA → relatório), autenticação serverless via Lambda no LocalStack, pipeline Gemini Vision + Groq Llama com guardrails, CI/CD e a seção de segurança.
 
 ---
 
